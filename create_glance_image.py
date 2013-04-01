@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import argparse
 import re
+from string import Template
 from tempfile import mkdtemp, NamedTemporaryFile, TemporaryFile
 from glanceclient import client as glance_client
 from keystoneclient.v2_0 import client as keystone_client
@@ -147,7 +148,7 @@ def glance_upload(image_filename, creds = {'auth_url': None, 'password': None, '
         try:
             image = glance.images.create(name=name)
             print "Uploading to Glance"
-	    image.update(**image_meta)
+            image.update(**image_meta)
             return image.id
         except Exception, e:
             raise
@@ -164,31 +165,35 @@ def ks_extract_bits(ksfile):
     f.close()
 
     install_url = None
-    vnc_password = None
+    console_password = None
+    console_command = None
     poweroff = False
+    distro = None
 
     for line in lines:
-	# Install URL lines look like this
-	# url --url=http://download.com/released/RHEL-5-Server/U9/x86_64/os/
-	m = re.match("url.*--url=(\S+)", line)
-	if m and len(m.groups()) == 1:
-	    install_url = m.group(1)
+        # Install URL lines look like this
+        # url --url=http://download.devel.redhat.com/released/RHEL-5-Server/U9/x86_64/os/
+        m = re.match("url.*--url=(\S+)", line)
+        if m and len(m.groups()) == 1:
+            install_url = m.group(1)
             continue
 
-	# VNC console lines look like this
-	# Inisist on a password being set
-	# vnc --password=vncpasswd    
-	m = re.match("vnc.*--password=(\S+)", line)
-	if m and len(m.groups()) == 1:
-	    vnc_password = m.group(1)
+        # VNC console lines look like this
+        # Inisist on a password being set
+        # vnc --password=vncpasswd    
+        m = re.match("vnc.*--password=(\S+)", line)
+        if m and len(m.groups()) == 1:
+            console_password = m.group(1)
+            console_command = "vncviewer %s:1"
             continue
 
-	# SSH console lines look like this
-	# Inisist on a password being set
-	# ssh --password=sshpasswd    
-	m = re.match("ssh.*--password=(\S+)", line)
-	if m and len(m.groups()) == 1:
-	    vnc_password = m.group(1)
+        # SSH console lines look like this
+        # Inisist on a password being set
+        # ssh --password=sshpasswd    
+        m = re.match("ssh.*--password=(\S+)", line)
+        if m and len(m.groups()) == 1:
+            console_password = m.group(1)
+            console_command = "ssh root@%s"
             continue
 
         # We require a poweroff after install to detect completion - look for the line
@@ -196,7 +201,68 @@ def ks_extract_bits(ksfile):
             poweroff=True
             continue
 
-    return (install_url, vnc_password, poweroff)
+    return (install_url, console_password, console_cmd, poweroff)
+
+def install_extract_bits(install_file, distro):
+    if distro == "rpm":
+        return ks_extract_bits(install_file)
+    elif distro == "ubuntu":
+        return preseed_extract_bits(install_file)
+    else:
+        return (None, None, None, None)
+
+def preseed_extract_bits(preseedfile):
+
+    f = open(preseedfile)
+    lines = f.readlines()
+    f.close()
+
+    install_url = None
+    console_password = None
+    console_command = None
+    poweroff = False
+
+    for line in lines:
+
+        # Network console lines look like this:
+        # d-i network-console/password password r00tme
+        m = re.match("d-i\s+network-console/password\s+password\s+(\S+)", line)
+        if m and len(m.groups()) == 1:
+            console_password = m.group(1)
+            console_command = "ssh installer@%s\nNote that you MUST connect to this session for the install to continue\nPlease do so now\n"
+            continue
+
+        # Preseeds do not need to contain any explicit pointers to network install sources
+        # Users can specify the install-url on the cmd line or provide a hint in a
+        # comment line that looks like this:
+        # "#ubuntu_baseurl=http://us.archive.ubuntu.com/ubuntu/dists/precise/"
+        m = re.match("#ubuntu_baseurl=(\S+)", line)
+        if m and len(m.groups()) == 1:
+            install_url = m.group(1)
+
+        # A preseed poweroff directive looks like this:
+        # d-i debian-installer/exit/poweroff boolean true
+        if re.match("d-i\s+debian-installer/exit/poweroff\s+boolean\s+true", line):
+            poweroff=True
+            continue
+  
+    return (install_url, console_password, console_command, poweroff)
+
+
+def detect_distro(install_script):
+
+    f = open(install_script)
+    lines = f.readlines()
+    f.close()
+
+    for line in lines:
+        if re.match("d-i\s+debian-installer", line):
+            return "ubuntu"
+        elif re.match("%packages", line):
+            return "rpm"
+
+    return None
+
 
 def generate_blank_syslinux():
     # Generate syslinux.qcow2 in working directory if it isn't already there
@@ -208,49 +274,49 @@ def generate_blank_syslinux():
     raw_fs_image = NamedTemporaryFile(delete=False)
     raw_image_name = raw_fs_image.name
     try:
-	output_image_name = "./syslinux.qcow2"
+        output_image_name = "./syslinux.qcow2"
 
-	# 200 MB sparse file
-	outsize = 1024 * 1024 * 200
-	raw_fs_image.truncate(outsize)
-	raw_fs_image.close()
+        # 200 MB sparse file
+        outsize = 1024 * 1024 * 200
+        raw_fs_image.truncate(outsize)
+        raw_fs_image.close()
 
-	# Partition, format and add DOS MBR
-	g = guestfs.GuestFS()
-	g.add_drive(raw_image_name)
-	g.launch()
-	g.part_disk("/dev/sda","msdos")
-	g.part_set_mbr_id("/dev/sda",1,0xb)
-	g.mkfs("vfat", "/dev/sda1")
-	g.part_set_bootable("/dev/sda", 1, 1)
-	dosmbr = open("/usr/share/syslinux/mbr.bin").read()
-	ws = g.pwrite_device("/dev/sda", dosmbr, 0)
-	if ws != len(dosmbr):
-	    raise Exception("Failed to write entire MBR")
-	g.sync()
-	g.close()
+        # Partition, format and add DOS MBR
+        g = guestfs.GuestFS()
+        g.add_drive(raw_image_name)
+        g.launch()
+        g.part_disk("/dev/sda","msdos")
+        g.part_set_mbr_id("/dev/sda",1,0xb)
+        g.mkfs("vfat", "/dev/sda1")
+        g.part_set_bootable("/dev/sda", 1, 1)
+        dosmbr = open("/usr/share/syslinux/mbr.bin").read()
+        ws = g.pwrite_device("/dev/sda", dosmbr, 0)
+        if ws != len(dosmbr):
+            raise Exception("Failed to write entire MBR")
+        g.sync()
+        g.close()
 
-	# Install syslinux - this is the ugly root-requiring part
-	gotloop = False
-	for n in range(4):
-	    # If this has a nonzero return code we will take the exception
-	    (stdout, stderr, retcode) = subprocess_check_output(["losetup","-f"])
-	    loopdev = stdout.rstrip()
-	    # Race - Try it a few times and then give up
-	    try:
-		subprocess_check_output(["losetup",loopdev,raw_image_name])
-	    except:
-		sleep(1)
-		continue
-	    gotloop = True
-	    break
+        # Install syslinux - this is the ugly root-requiring part
+        gotloop = False
+        for n in range(4):
+            # If this has a nonzero return code we will take the exception
+            (stdout, stderr, retcode) = subprocess_check_output(["losetup","-f"])
+            loopdev = stdout.rstrip()
+            # Race - Try it a few times and then give up
+            try:
+                subprocess_check_output(["losetup",loopdev,raw_image_name])
+            except:
+                sleep(1)
+                continue
+            gotloop = True
+            break
 
-	if not gotloop:
-	    raise Exception("Failed to setup loopback")
+        if not gotloop:
+            raise Exception("Failed to setup loopback")
 
-	loopbase = os.path.basename(loopdev)
+        loopbase = os.path.basename(loopdev)
 
-	try:
+        try:
             subprocess_check_output(["kpartx","-a",loopdev])
             # On RHEL6 there seems to be a short delay before the mappings actually show up
             sleep(5)
@@ -272,18 +338,25 @@ def generate_blank_syslinux():
         #os.remove(raw_image_name)
 
 
-def generate_boot_content(url, dest_dir):
+def generate_boot_content(url, dest_dir, distro="rpm"):
     """
     Insert kernel, ramdisk and syslinux.cfg file in dest_dir
     source from url
     """
     # TODO: Add support for something other than rhel5
 
-    kernel_url = url + "images/pxeboot/vmlinuz"
+    if distro == "rpm":
+        kernel_url = url + "images/pxeboot/vmlinuz"
+        initrd_url = url + "images/pxeboot/initrd.img"
+        cmdline = "ks=http://169.254.169.254/latest/user-data"
+    elif distro == "ubuntu":
+        kernel_url = url + "main/installer-amd64/current/images/netboot/ubuntu-installer/amd64/linux"
+        initrd_url = url + "main/installer-amd64/current/images/netboot/ubuntu-installer/amd64/initrd.gz"
+        cmdline = "append preseed/url=http://169.254.169.254/latest/user-data vga=788 debian-installer/locale=en_US console-setup/layoutcode=us netcfg/choose_interface=auto keyboard-configuration/layoutcode=us priority=critical --"
+
     kernel_dest = os.path.join(dest_dir,"vmlinuz")
     http_download_file(kernel_url, kernel_dest)
 
-    initrd_url = url + "images/pxeboot/initrd.img"
     initrd_dest = os.path.join(dest_dir,"initrd.img")
     http_download_file(initrd_url, initrd_dest)
 
@@ -292,8 +365,8 @@ timeout 30
 prompt 1
 label customhd
   kernel vmlinuz
-  append initrd=initrd.img ks=http://169.254.169.254/latest/user-data
-"""
+  append initrd=initrd.img %s
+""" % (cmdline)
     
     f = open(os.path.join(dest_dir, "syslinux.cfg"),"w")
     f.write(syslinux_conf)
@@ -320,7 +393,7 @@ def wait_for_shutoff(instance, nova):
             print "Waiting for instance status SHUTOFF - current status (%s): %d/1200" % (status, i)
         sleep(1)
 
-def wait_for_noping(instance, nova, vncpassword):
+def wait_for_noping(instance, nova, console_password, console_command):
     # pre-grizzly releases are slow to notice an instance is shut off - see thread:
     # http://lists.openstack.org/pipermail/openstack-dev/2013-January/004501.html
     #
@@ -333,13 +406,13 @@ def wait_for_noping(instance, nova, vncpassword):
     # Just try for a few minutes then give up
     instance_ip = None
     for i in range(18):
-	try:
+        try:
             instance = nova.servers.get(instance.id)
             print "Instance status: %s" % (instance.status)
             # First IP for the first key returned in the networks dict
             instance_ip = instance.networks[instance.networks.keys()[0]][0]
             break
-	except:
+        except:
             sleep(10)
             pass
 
@@ -363,11 +436,12 @@ def wait_for_noping(instance, nova, vncpassword):
 
     print "Instance responding to pings - waiting up to 20 minutes for it to stop"
     # TODO: Automate this using subprocess
-    if vnc_password:
-        print "Kickstart file contains a vnc directive with a password"
-        print "You should be able to view Anaconda progress with the following command:"
-        print "$ vncviewer %s:1" % (instance_ip)
-        print "When prompted for a password enter: %s" % (vnc_password)
+    if console_password:
+        print "Install script contains a remove console directive with a password"
+        print "You should be able to view progress with the following command:"
+        print "$",
+        print console_command % (instance_ip)
+        print "When prompted for a password enter: %s" % (console_password)
         print "Note that it may take a few mintues for the server to become available"
     # Now wait for up to 20 minutes for it to stop ping replies for at least 30 seconds
     misses=0
@@ -395,21 +469,27 @@ def wait_for_noping(instance, nova, vncpassword):
 
 
 def launch_and_wait(image_id, ks_file, creds, vnc_password):
-    userdata = open(ks_file)
     nova = nova_client.Client(creds['username'], creds['password'], creds['tenant'],
                               auth_url=creds['auth_url'], insecure=True)
-    instance = nova.servers.create("self-install instance", image_id, 2, userdata=userdata, meta={})
+    instance = nova.servers.create(instance_name, image_id, 2, userdata=working_ks, meta={})
     print "Started instance id (%s)" % (instance.id)
-    userdata.close()
 
     #noping for Folsom - shutoff for newer
     #result = wait_for_shutoff(instance, nova)
-    result = wait_for_noping(instance, nova, vnc_password)
+    result = wait_for_noping(instance, nova, console_password, console_command)
 
     if not result:
         raise Exception("Timeout while waiting for install to finish")
 
     return result
+
+def do_pw_sub(ks_file, admin_password):
+    f = open(ks_file, "r")
+    working_ks = ""
+    for line in f:
+        working_ks += Template(line).safe_substitute({ 'adminpw': admin_password })
+    f.close()
+    return working_ks
 
 parser = argparse.ArgumentParser(description='Launch and snapshot a kickstart install using syslinux and Glance')
 parser.add_argument('--auth-url', dest='auth_url', required=True,
@@ -422,34 +502,52 @@ parser.add_argument('--password', dest='password', required=True,
                     help='password for keystone authorization')
 parser.add_argument('--glance-url', dest='glance_url', required=True,
                     help='URL for glance service')
+parser.add_argument('--admin-password', dest='admin_password', required=True,
+                    help='administrator password - also used for optional remote access during install')
 parser.add_argument('--install-tree-url', dest='install_tree_url',
                     help='URL for preferred network install tree (optional)')
-parser.add_argument('--image-name', dest='image_name', default='',
+parser.add_argument('--distro', dest='distro',
+                    help='distro - must be "rpm" or "ubuntu (optional)"')
+parser.add_argument('--image-name', dest='image_name',
                     help='name to assign newly created image (optional)')
 parser.add_argument('ks_file',
-                    help='kickstart file to use for install')
+                    help='kickstart/install-script file to use for install')
 args = parser.parse_args()
 
-(install_tree_url, vnc_password, poweroff) = ks_extract_bits(args.ks_file)
+# This is a string
+working_kickstart = do_pw_sub(args.ks_file, args.admin_password)
 
+distro = detect_distro(args.ks_file)
+if args.distro:
+    # Allow the command line distro to override our guess above
+    distro = args.distro
+
+(install_tree_url, console_password, console_command, poweroff) = install_extract_bits(args.ks_file, distro)
 if args.install_tree_url:
     # Allow the specified tree to override anything extracted above
-    install_tree_url = args['install_tree_url']
+    install_tree_url = args.install_tree_url
 
 if args.image_name:
     image_name = args.image_name
 else:
-    image_name = "Image from ks file: %s - Date: %s" % (args.ks_file, strftime("%a, %d %b %Y %H:%M:%S +0000", gmtime()))
+    image_name = "Image from ks file: %s - Date: %s" % (os.path.basename(args.ks_file), strftime("%a, %d %b %Y %H:%M:%S +0000", gmtime()))
 
+# Let's be nice and report as many error conditions as we can before exiting
 error = False
 
 if not install_tree_url:
-    # Not provided on command line and not extracted
-    print "ERROR: no install tree URL specified and could not extract one from the kickstart"
+    print "ERROR: no install tree URL specified and could not extract one from the kickstart/install-script"
     error =  True
 
+if not distro:
+    print "ERROR: no distro specified and could not guess based on the kickstart/install-script"
+    error = True
+
 if not poweroff:
-    print "ERROR: supplied kickstart file must contain a 'poweroff' line"
+    if distro == "rpm":
+        print "ERROR: supplied kickstart file must contain a 'poweroff' line"
+    elif distro == "ubuntu":
+        print "ERROR: supplied preseed must contain a 'd-i debian-installer/exit/poweroff boolean true' line"
     error = True
 
 if error:
@@ -470,7 +568,7 @@ shutil.copy("./syslinux.qcow2",modified_image)
 # Generate the content to put into the image
 tmp_content_dir = mkdtemp()
 print "Collecting boot content for auto-install image"
-generate_boot_content(install_tree_url, tmp_content_dir)
+generate_boot_content(install_tree_url, tmp_content_dir, distro)
 
 # Copy in the kernel, initrd and conf files into the blank boot stub using libguestfs
 print "Copying boot content into a bootable syslinux image"
@@ -486,7 +584,7 @@ print "Uploaded successfully as glance image (%s)" % (image_id)
 # Optionally - spawn a vncviewer to watch the install graphically
 # Poll on image status until it is SHUTDOWN or timeout
 print "Launching install image"
-installed_instance = launch_and_wait(image_id, args.ks_file, creds, vnc_password)
+installed_instance = launch_and_wait(image_id, working_kickstart, os.path.basename(args.ks_file), creds, console_password, console_command)
 
 # Take a snapshot of the now safely shutdown image
 print "Taking snapshot of completed install"

@@ -4,13 +4,13 @@ url --url=http://mirrors.kernel.org/fedora/releases/18/Fedora/x86_64/os/
 repo --name="fedora-everything" --mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=fedora-18&arch=x86_64
 install
 graphical
-#vnc --password=<FIXME>
+vnc --password=${adminpw}
 text
 keyboard us
 lang en_US.UTF-8
 skipx
 network --device eth0 --bootproto dhcp
-#rootpw <FIXME>
+rootpw ${adminpw}
 firewall --disabled
 authconfig --enableshadow --enablemd5
 selinux --enforcing
