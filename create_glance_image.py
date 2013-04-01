@@ -468,7 +468,7 @@ def wait_for_noping(instance, nova, console_password, console_command):
 
 
 
-def launch_and_wait(image_id, ks_file, image_name, creds, console_password, console_command):
+def launch_and_wait(image_id, working_ks, instance_name, creds, console_password, console_command):
     nova = nova_client.Client(creds['username'], creds['password'], creds['tenant'],
                               auth_url=creds['auth_url'], insecure=True)
     instance = nova.servers.create(instance_name, image_id, 2, userdata=working_ks, meta={})
