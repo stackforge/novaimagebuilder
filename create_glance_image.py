@@ -396,7 +396,7 @@ def wait_for_noping(instance, nova, vncpassword):
 
 def launch_and_wait(image_id, ks_file, creds, vnc_password):
     userdata = open(ks_file)
-    nova = nova_client.Client(creds['username'], creds['password'], creds['username'],
+    nova = nova_client.Client(creds['username'], creds['password'], creds['tenant'],
                               auth_url=creds['auth_url'], insecure=True)
     instance = nova.servers.create("self-install instance", image_id, 2, userdata=userdata, meta={})
     print "Started instance id (%s)" % (instance.id)
