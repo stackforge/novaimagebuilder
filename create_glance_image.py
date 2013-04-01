@@ -201,7 +201,7 @@ def ks_extract_bits(ksfile):
             poweroff=True
             continue
 
-    return (install_url, console_password, console_cmd, poweroff)
+    return (install_url, console_password, console_command, poweroff)
 
 def install_extract_bits(install_file, distro):
     if distro == "rpm":
