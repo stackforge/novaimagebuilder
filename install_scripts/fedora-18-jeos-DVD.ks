@@ -1,10 +1,12 @@
-url --url=http://mirrors.kernel.org/fedora/releases/17/Fedora/x86_64/os/
+cdrom
+#url --url=http://mirrors.kernel.org/fedora/releases/18/Fedora/x86_64/os/
 # Without the Everything repo, we cannot install cloud-init
-#repo --name="fedora-everything" --baseurl=http://mirrors.kernel.org/fedora/releases/17/Everything/x86_64/os/
-repo --name="fedora-everything" --mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=fedora-17&arch=x86_64
+#repo --name="fedora-everything" --baseurl=http://mirrors.kernel.org/fedora/releases/18/Everything/x86_64/os/
+repo --name="fedora-everything" --mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=fedora-18&arch=x86_64
 install
 graphical
 vnc --password=${adminpw}
+text
 keyboard us
 lang en_US.UTF-8
 skipx
@@ -18,7 +20,7 @@ bootloader --location=mbr
 zerombr
 clearpart --all --drives=vda
 
-part biosboot --fstype=biosboot --size=1
+part biosboot --fstype=biosboot --size=1 --ondisk=vda
 part /boot --fstype ext4 --size=200 --ondisk=vda
 part pv.2 --size=1 --grow --ondisk=vda
 volgroup VolGroup00 --pesize=32768 pv.2
@@ -29,6 +31,7 @@ poweroff
 bootloader --location=mbr --timeout=5 --append="rhgb quiet"
 
 %packages
-@base
+@core
+cloud-init
 
 %end

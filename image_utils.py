@@ -26,6 +26,7 @@ import re
 from string import Template
 from tempfile import mkdtemp, NamedTemporaryFile, TemporaryFile
 from glanceclient import client as glance_client
+from cinderclient import client as cinder_client
 from keystoneclient.v2_0 import client as keystone_client
 from novaclient.v1_1 import client as nova_client
 from time import sleep, gmtime, strftime
@@ -128,7 +129,7 @@ def http_download_file(url, filename):
 
 
 ### Borrowed from Image Factory OpenStack plugin
-def glance_upload(image_filename, creds = {'auth_url': None, 'password': None, 'strategy': 'noauth', 'tenant': None, 'username': None},
+def glance_upload(image_filename = None, image_url = None, creds = {'auth_url': None, 'password': None, 'strategy': 'noauth', 'tenant': None, 'username': None},
                   glance_url = None, token = None, name = 'Factory Test Image', disk_format = 'raw'):
 
     k = keystone_client.Client(username=creds['username'], password=creds['password'], tenant_name=creds['tenant'], auth_url=creds['auth_url'])
@@ -136,33 +137,95 @@ def glance_upload(image_filename, creds = {'auth_url': None, 'password': None, '
     if (k.authenticate()):
         #Connect to glance to upload the image
         glance = glance_client.Client("1", endpoint=glance_url, token=k.auth_token)
-        image_data = open(image_filename, "r")
         image_meta = {'container_format': 'bare',
          'disk_format': disk_format,
          'is_public': True,
          'min_disk': 0,
          'min_ram': 0,
          'name': name,
-         'data': image_data,
          'properties': {'distro': 'rhel'}}
         try:
             image = glance.images.create(name=name)
-            print "Uploading to Glance"
-            image.update(**image_meta)
-            return image.id
+            if image_filename:
+                image_data = open(image_filename, "r")
+                image_meta['data'] = image_data
+                print "Uploading to Glance"
+                image.update(**image_meta)
+            elif image_url:
+                image_meta['copy_from'] = image_url
+                image.update(**image_meta)
+                print "Waiting for Glance to finish creating image from URL: %s" % (image_url)
+                while (image.status != 'active'):
+                    if image.status == 'killed':
+                        raise Exception("Glance error while waiting for image to generate from URL")
+                    print '.',
+                    sys.stdout.flush()
+                    sleep(10)
+                    image=glance.images.get(image.id)
+            return image
         except Exception, e:
             raise
     else:
         raise Exception("Unable to authenticate into glance")
 
+def volume_from_image(image_id, creds, glance_url, volume_size = None):
+    k = keystone_client.Client(username=creds['username'], password=creds['password'], tenant_name=creds['tenant'], auth_url=creds['auth_url'])
+    if not k.authenticate():
+        raise Exception("Could not authenticate into keystone")
+
+    glance = glance_client.Client("1", endpoint=glance_url, token=k.auth_token)
+    cinder = cinder_client.Client('1', creds['username'], creds['password'], creds['tenant'], creds['auth_url'])
+    try:
+        image = glance.images.get(image_id)
+    except:
+        raise Exception("Could not find Glance image with id" % (image_id))
+   
+    # Unclear if this is strictly needed
+    # If size is not explicitly set then set it based on the image size
+    # TODO: Check if we even have to set a size when pulling from an image 
+    if not volume_size:
+        # Gigabytes rounded up
+        volume_size = int(image.size/(1024*1024*1024)+1)
+
+    print "Starting asyncronous copying to Cinder"
+    volume = cinder.volumes.create(volume_size, display_name=image.name, imageRef=image.id)
+    while (volume.status != 'available'):
+        print "Waiting for volume to be ready ... current status (%s)" % (volume.status)
+        sleep(5)
+        volume = cinder.volumes.get(volume.id)
+        if (volume.status == 'error'):
+            raise Exception('Error converting image to volume')
+    return volume
+
+def snapshot_from_volume(volume_id, creds):
+    cinder = cinder_client.Client('1', creds['username'], creds['password'], creds['tenant'], creds['auth_url'])
+    volume = volume=cinder.volumes.get(volume_id)
+    snapshot = cinder.volume_snapshots.create(volume.id,False,volume.display_name,volume.display_description)
+    while (snapshot.status != 'available'):
+        print "Waiting for snapshot to be ready ... current status (%s)" % (snapshot.status)
+        sleep(5)
+        snapshot = cinder.volume_snapshots.get(snapshot.id)
+        if snapshot.status == 'error':
+            raise Exception('Error while taking volume snapshot')
+    return snapshot                   
+
+def volume_from_snapshot(snapshot_id, creds):
+    cinder = cinder_client.Client('1', creds['username'], creds['password'], creds['tenant'], creds['auth_url'])
+    snapshot = cinder.volume_snapshots.get(snapshot_id)
+    volume = cinder.volumes.create(size=None, snapshot_id=snapshot_id, display_name=snapshot.display_name,
+                                   display_description=snapshot.display_description)
+    while (volume.status != 'available'):
+        print "Waiting for volume to be ready ... current status (%s)" % (volume.status)
+        sleep(5)
+        volume = cinder.volumes.get(volume.id)
+        if volume.status == 'error':
+            raise Exception('Error while taking volume snapshot')
+    return volume
+
 def ks_extract_bits(ksfile):
     # I briefly looked at pykickstart but it more or less requires you know the version of the
     # format you wish to use 
     # The approach below actually works as far back as RHEL5 and as recently as F18
-
-    f = open(ksfile)
-    lines = f.readlines()
-    f.close()
 
     install_url = None
     console_password = None
@@ -170,7 +233,7 @@ def ks_extract_bits(ksfile):
     poweroff = False
     distro = None
 
-    for line in lines:
+    for line in ksfile.splitlines():
         # Install URL lines look like this
         # url --url=http://download.devel.redhat.com/released/RHEL-5-Server/U9/x86_64/os/
         m = re.match("url.*--url=(\S+)", line)
@@ -213,16 +276,12 @@ def install_extract_bits(install_file, distro):
 
 def preseed_extract_bits(preseedfile):
 
-    f = open(preseedfile)
-    lines = f.readlines()
-    f.close()
-
     install_url = None
     console_password = None
     console_command = None
     poweroff = False
 
-    for line in lines:
+    for line in preseedfile.splitlines():
 
         # Network console lines look like this:
         # d-i network-console/password password r00tme
@@ -251,11 +310,7 @@ def preseed_extract_bits(preseedfile):
 
 def detect_distro(install_script):
 
-    f = open(install_script)
-    lines = f.readlines()
-    f.close()
-
-    for line in lines:
+    for line in install_script.splitlines():
         if re.match("d-i\s+debian-installer", line):
             return "ubuntu"
         elif re.match("%packages", line):
@@ -338,7 +393,7 @@ def generate_blank_syslinux():
         #os.remove(raw_image_name)
 
 
-def generate_boot_content(url, dest_dir, distro="rpm"):
+def generate_boot_content(url, dest_dir, distro, create_volume):
     """
     Insert kernel, ramdisk and syslinux.cfg file in dest_dir
     source from url
@@ -348,11 +403,15 @@ def generate_boot_content(url, dest_dir, distro="rpm"):
     if distro == "rpm":
         kernel_url = url + "images/pxeboot/vmlinuz"
         initrd_url = url + "images/pxeboot/initrd.img"
-        cmdline = "ks=http://169.254.169.254/latest/user-data"
+        if create_volume:
+            # NOTE: RHEL5 and other older Anaconda versions do not support specifying the CDROM device - use with caution
+            cmdline = "ks=http://169.254.169.254/latest/user-data repo=cdrom:/dev/vdb"
+        else:
+            cmdline = "ks=http://169.254.169.254/latest/user-data"
     elif distro == "ubuntu":
         kernel_url = url + "main/installer-amd64/current/images/netboot/ubuntu-installer/amd64/linux"
         initrd_url = url + "main/installer-amd64/current/images/netboot/ubuntu-installer/amd64/initrd.gz"
-        cmdline = "append preseed/url=http://169.254.169.254/latest/user-data vga=788 debian-installer/locale=en_US console-setup/layoutcode=us netcfg/choose_interface=auto keyboard-configuration/layoutcode=us priority=critical --"
+        cmdline = "append preseed/url=http://169.254.169.254/latest/user-data debian-installer/locale=en_US console-setup/layoutcode=us netcfg/choose_interface=auto keyboard-configuration/layoutcode=us priority=critical --"
 
     kernel_dest = os.path.join(dest_dir,"vmlinuz")
     http_download_file(kernel_url, kernel_dest)
@@ -434,18 +493,18 @@ def wait_for_noping(instance, nova, console_password, console_command):
     if not started:
         raise Exception("Instance at IP (%s) failed to start after 3 minutes." % (instance_ip) )
 
-    print "Instance responding to pings - waiting up to 20 minutes for it to stop"
+    print "Instance responding to pings - waiting up to 40 minutes for it to stop"
     # TODO: Automate this using subprocess
     if console_password:
         print "Install script contains a remove console directive with a password"
         print "You should be able to view progress with the following command:"
         print "$",
         print console_command % (instance_ip)
-        print "When prompted for a password enter: %s" % (console_password)
+        print "password: %s" % (console_password)
+        print
         print "Note that it may take a few mintues for the server to become available"
-    # Now wait for up to 20 minutes for it to stop ping replies for at least 30 seconds
     misses=0
-    for i in range(120):
+    for i in range(240):
         print '.',
         sys.stdout.flush()
         if do_one(instance_ip, 10):
@@ -460,18 +519,25 @@ def wait_for_noping(instance, nova, console_password, console_command):
     print ''
 
     if misses != 4:
-        print "Instance still pinging after 20 seconds - Assuming install failure"
+        print "Instance still pinging after 40 minutes - Assuming install failure"
         return
 
     print "Instance has stopped responding to ping for at least 30 seconds - assuming install is complete"
     return instance
 
 
+def launch_and_wait(image, image_volume, install_media_volume, working_ks, instance_name, creds, console_password, console_command):
+    if install_media_volume and image_volume:
+        block_device_mapping = {'vda': image_volume.id + ":::0", 'vdb': install_media_volume.id + ":::0"}
+    elif image_volume:
+        block_device_mapping = {'vda': image_volume.id + ":::0" }
+    else:
+        block_device_mapping = None
 
-def launch_and_wait(image_id, working_ks, instance_name, creds, console_password, console_command):
     nova = nova_client.Client(creds['username'], creds['password'], creds['tenant'],
                               auth_url=creds['auth_url'], insecure=True)
-    instance = nova.servers.create(instance_name, image_id, 2, userdata=working_ks, meta={})
+    instance = nova.servers.create(instance_name, image.id, 2, userdata=working_ks, meta={},
+                                   block_device_mapping = block_device_mapping)
     print "Started instance id (%s)" % (instance.id)
 
     #noping for Folsom - shutoff for newer
@@ -483,6 +549,39 @@ def launch_and_wait(image_id, working_ks, instance_name, creds, console_password
 
     return result
 
+
+def terminate_instance(instance_id, creds):
+    nova = nova_client.Client(creds['username'], creds['password'], creds['tenant'],
+                              auth_url=creds['auth_url'], insecure=True)
+    instance = nova.servers.get(instance_id)
+    instance.delete()
+    print "Waiting for instance id (%s) to be terminated/delete" % (instance_id)
+    while True:
+        print "Current instance status: %s" % (instance.status)
+        sleep(2)
+        try:
+            instance = nova.servers.get(instance_id)
+        except Exception as e:
+            print "Got exception (%s) assuming deletion complete" % (e)
+            break
+
+def wait_for_glance_snapshot(image_id, creds, glance_url):
+    k = keystone_client.Client(username=creds['username'], password=creds['password'], tenant_name=creds['tenant'], auth_url=creds['auth_url'])
+    if not k.authenticate():
+        raise Exception("Unable to authenticate into Keystone")
+
+    glance = glance_client.Client("1", endpoint=glance_url, token=k.auth_token)
+    image = glance.images.get(image_id)
+    print "Waiting for glance image id (%s) to become active" % (image_id)
+    while True:
+        print "Current image status: %s" % (image.status)
+        sleep(2)
+        image = glance.images.get(image.id)
+        if image.status == "error":
+            raise Exception("Image entered error status while waiting for completion")
+        elif image.status == 'active':
+            break
+
 def do_pw_sub(ks_file, admin_password):
     f = open(ks_file, "r")
     working_ks = ""
@@ -490,111 +589,3 @@ def do_pw_sub(ks_file, admin_password):
         working_ks += Template(line).safe_substitute({ 'adminpw': admin_password })
     f.close()
     return working_ks
-
-parser = argparse.ArgumentParser(description='Launch and snapshot a kickstart install using syslinux and Glance')
-parser.add_argument('--auth-url', dest='auth_url', required=True,
-                    help='URL for keystone authorization')
-parser.add_argument('--username', dest='username', required=True,
-                    help='username for keystone authorization')
-parser.add_argument('--tenant', dest='tenant', required=True,
-                    help='tenant for keystone authorization')
-parser.add_argument('--password', dest='password', required=True,
-                    help='password for keystone authorization')
-parser.add_argument('--glance-url', dest='glance_url', required=True,
-                    help='URL for glance service')
-parser.add_argument('--admin-password', dest='admin_password', required=True,
-                    help='administrator password - also used for optional remote access during install')
-parser.add_argument('--install-tree-url', dest='install_tree_url',
-                    help='URL for preferred network install tree (optional)')
-parser.add_argument('--distro', dest='distro',
-                    help='distro - must be "rpm" or "ubuntu (optional)"')
-parser.add_argument('--image-name', dest='image_name',
-                    help='name to assign newly created image (optional)')
-parser.add_argument('ks_file',
-                    help='kickstart/install-script file to use for install')
-args = parser.parse_args()
-
-# This is a string
-working_kickstart = do_pw_sub(args.ks_file, args.admin_password)
-
-distro = detect_distro(args.ks_file)
-if args.distro:
-    # Allow the command line distro to override our guess above
-    distro = args.distro
-
-(install_tree_url, console_password, console_command, poweroff) = install_extract_bits(args.ks_file, distro)
-if args.install_tree_url:
-    # Allow the specified tree to override anything extracted above
-    install_tree_url = args.install_tree_url
-
-if args.image_name:
-    image_name = args.image_name
-else:
-    image_name = "Image from ks file: %s - Date: %s" % (os.path.basename(args.ks_file), strftime("%a, %d %b %Y %H:%M:%S +0000", gmtime()))
-
-# Let's be nice and report as many error conditions as we can before exiting
-error = False
-
-if not install_tree_url:
-    print "ERROR: no install tree URL specified and could not extract one from the kickstart/install-script"
-    error =  True
-
-if not distro:
-    print "ERROR: no distro specified and could not guess based on the kickstart/install-script"
-    error = True
-
-if not poweroff:
-    if distro == "rpm":
-        print "ERROR: supplied kickstart file must contain a 'poweroff' line"
-    elif distro == "ubuntu":
-        print "ERROR: supplied preseed must contain a 'd-i debian-installer/exit/poweroff boolean true' line"
-    error = True
-
-if error:
-    sys.exit(1)
-
-# Artifact of borrowing factory code - pass this as a dict
-creds = { 'username': args.username, 'tenant': args.tenant, 'password': args.password, 'auth_url': args.auth_url }
-
-# Generate "blank" syslinux bootable mini-image
-# This is the only step that strictly requires root access due to the need
-# for a loopback mount to install the bootloader
-generate_blank_syslinux()
-
-# Take a copy of it
-modified_image = "./syslinux_modified_%s.qcow2" % os.getpid()
-shutil.copy("./syslinux.qcow2",modified_image)
-
-# Generate the content to put into the image
-tmp_content_dir = mkdtemp()
-print "Collecting boot content for auto-install image"
-generate_boot_content(install_tree_url, tmp_content_dir, distro)
-
-# Copy in the kernel, initrd and conf files into the blank boot stub using libguestfs
-print "Copying boot content into a bootable syslinux image"
-copy_content_to_image(tmp_content_dir, modified_image)
-
-# Upload the resulting image to glance
-print "Uploading image to glance"
-image_id = glance_upload(modified_image, creds = creds, glance_url = args.glance_url, 
-                         name = "INSTALL for: %s" % (image_name), disk_format='qcow2')
-
-print "Uploaded successfully as glance image (%s)" % (image_id)
-# Launch the image with the provided ks.cfg as the user data
-# Optionally - spawn a vncviewer to watch the install graphically
-# Poll on image status until it is SHUTDOWN or timeout
-print "Launching install image"
-installed_instance = launch_and_wait(image_id, working_kickstart, os.path.basename(args.ks_file), creds, console_password, console_command)
-
-# Take a snapshot of the now safely shutdown image
-print "Taking snapshot of completed install"
-finished_image_id = installed_instance.create_image(image_name)
-
-print "Finished image snapshot ID is: %s" % (finished_image_id)
-print "Finished image name is: %s" % (image_name)
-#print "Cleaning up"
-#print "Removing temp content dir"
-#shutil.rmtree(tmp_content_dir)
-#print "Removing install image"
-##TODO:Note that thie is actually cacheable on a per-os-version basis
-#os.remove(modified_image)
