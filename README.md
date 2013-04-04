@@ -81,19 +81,27 @@ However, this feature stops the installation and waits for user input so
 it is commented out in the example preseed files.  See instructions in
 the comments for how to enable this.
 
-If all goes well, this will install Fedora 18 entirely within a Nova container using
-the well known network install sources found in the kickstart file.
+
+### What operating systems can it support?
+
+The install_scripts contains known-working kickstart and preseed files for:
+
+Fedora 18, Fedora 17, RHEL 6.4, RHEL 5.9
+
+Ubuntu 12.10, 12.04 and 10.04
+
+This approach should work as far back as Fedora 10 and RHEL 4 U8 and on
+other Linux variants including SLES.
 
 
-### Volume based images
-
+### Volume Based Images
 
 By default the script will build a Glance backed image.  If passed the
 --create-volume option it will instead build a volume backed "snapshot"
 image.
 
 
-### ISO install media
+### ISO Install Media
 
 It also contains initial support for presenting installer ISO images as
 a source for installation packages.  This support has only been tested for
@@ -110,24 +118,22 @@ without having to pull down a copy of the entire ISO.)
 
 This script has been tested with the following OpenStack client packages:
 
-python-glanceclient-0.5.1-1.el6.noarch
-
-python-novaclient-2.10.0-2.el6.noarch
-
-python-keystoneclient-0.1.3.27-1.el6.noarch
+* python-glanceclient-0.5.1-1.el6.noarch
+* python-novaclient-2.10.0-2.el6.noarch
+* python-keystoneclient-0.1.3.27-1.el6.noarch
+* python-cinderclient-0.2.26-1.el6.noarch
 
 Newer and older versions may work.
 
-
 It also requires:
 
-python-libguestfs
-syslinux
-qemu-img
+* python-libguestfs
+* syslinux
+* qemu-img
 
 If you want to view ongoing installs over VNC you will need:
 
-tigervnc
+* tigervnc
 
 
 ### TODO

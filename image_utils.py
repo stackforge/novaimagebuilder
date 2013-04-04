@@ -1,6 +1,8 @@
 #!/usr/bin/python
 #
 #   Copyright 2013 Red Hat, Inc.
+#   Portions Copyright (C) 2010,2011,2012  Chris Lalancette <clalance@redhat.com>
+#   Portions Copyright (C) 2012,2013  Chris Lalancette <clalancette@gmail.com>
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
