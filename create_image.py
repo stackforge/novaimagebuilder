@@ -61,13 +61,29 @@ instpar.add_argument('--image-name', dest='image_name',
                     help='name to assign newly created image (optional)')
 instpar.add_argument('--leave-mess', dest='leave_mess', action='store_true', default=False,
                     help='Do not clean up local or remote artifacts when finished or when an error is encountered')
-parser.add_argument('ks_file',
-                    help='kickstart/install-script file to use for install')
+instpar.add_argument('--install-script', dest='ks_file',
+                            help='kickstart/install-script file to use for install')
+instpar.add_argument('--os_name', dest='os_name',
+                            help='OS short name as it appears in libosinfo')
 args = parser.parse_args()
 
-# This is a string
-working_kickstart = do_pw_sub(args.ks_file, args.admin_password)
+from gi.repository import Libosinfo as osinfo;
+loader = osinfo.Loader()
+loader.process_default_path()
+db = loader.get_db()
+f17 = db.get_os('http://fedoraproject.org/fedora/17')
+install_scripts = f17.get_install_script_list()
+install_config = osinfo.InstallConfig()
+install_config.set_admin_password(args.admin_password)
+install_script = install_scripts.get_elements()[0]
 
+# This is a string
+working_kickstart = install_script.generate(f17, install_config, None)
+working_kickstart = add_install_media_url(working_kickstart, args.install_media_url)
+working_kickstart = add_power_off(working_kickstart)
+old_ks = do_pw_sub(args.ks_file, args.admin_password)
+#print working_kickstart
+#print old_ks
 distro = detect_distro(working_kickstart)
 if args.distro:
     # Allow the command line distro to override our guess above
@@ -224,6 +240,7 @@ try:
         finished = True
 
 except Exception as e:
+    import pdb;pdb.set_trace()
     print "Uncaught exception encountered during install"
     print str(e)
     retcode = 1

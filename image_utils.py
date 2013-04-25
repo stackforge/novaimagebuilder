@@ -591,3 +591,9 @@ def do_pw_sub(ks_file, admin_password):
         working_ks += Template(line).safe_substitute({ 'adminpw': admin_password })
     f.close()
     return working_ks
+
+def add_install_media_url(ks_string, install_media_url):
+    return "url --url=%s\n%s" % (install_media_url, ks_string)
+
+def add_power_off(ks_string):
+    return "%s\n%s" % (ks_string[:-6], "poweroff\n%end")
