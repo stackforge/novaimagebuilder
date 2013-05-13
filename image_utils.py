@@ -17,22 +17,18 @@
 #   limitations under the License.
 
 import os
-import os.path
 import sys
 import guestfs
 import pycurl
-import shutil
 import subprocess
-import argparse
 import re
 from string import Template
-from tempfile import mkdtemp, NamedTemporaryFile, TemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryFile
 from glanceclient import client as glance_client
 from cinderclient import client as cinder_client
 from keystoneclient.v2_0 import client as keystone_client
 from novaclient.v1_1 import client as nova_client
-from time import sleep, gmtime, strftime
-from ping import do_one
+from time import sleep
 
 
 ### Utility functions borrowed from Oz and lightly modified
