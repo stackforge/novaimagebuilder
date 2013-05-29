@@ -102,7 +102,6 @@ class MongoPersistentBuildManager(object):
 
     def _builds_from_query(self, query):
         mongo_cursor = self.collection.find(query)
-        import pdb;pdb.set_trace()
         builds = self._builds_from_mongo_cursor(mongo_cursor) 
         return builds
 
