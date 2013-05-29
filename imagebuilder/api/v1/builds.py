@@ -30,7 +30,7 @@ from webob.exc import (HTTPNotFound,
                        HTTPBadRequest)
 
 from imagebuilder.common import wsgi
-
+from imagebuilder import MongoPersistentBuildManager
 logger = logging.getLogger('imagebuilder.api.v1.builds')
 
 
@@ -43,103 +43,34 @@ class BuildController(object):
 
     def __init__(self, options):
         self.options = options
+        self.build_manager = MongoPersistentBuildManager.MongoPersistentBuildManager()
 
     def list(self, req):
         """
         Returns the following information for all builds:
         """
-        
-        build_list = []
-        res = {'ListBuildsResponse': {'ListBuildsResult': {'BuildSummaries': [] } } }
-        summaries = res['ListBuildsResponse']['ListBuildsResult']['BuildSummaries']
-        for s in build_list:
-            summaries.append(s)
+         
+        build_list = self.build_manager.builds_from_query({})
+        return build_list
 
-        return res
-
-    def describe(self, req):
+    def describe(self, req, build_id):
         """
         Returns the following information for all builds:
         """
-
-        build_list = c.show_build(req.params['StackName'])
-        res = {'DescribeStacksResult': {'Stacks': [] } }
-        builds = res['DescribeStacksResult']['Stacks']
-        for s in build_list:
-            mem = {'member': s}
-            builds.append(mem)
-
-        return res
-
-    def _get_template(self, req):
-        if req.params.has_key('TemplateBody'):
-            logger.info('TemplateBody ...')
-            return req.params['TemplateBody']
-        elif req.params.has_key('TemplateUrl'):
-            logger.info('TemplateUrl %s' % req.params['TemplateUrl'])
-            url = urlparse.urlparse(req.params['TemplateUrl'])
-            if url.scheme == 'https':
-                conn = httplib.HTTPSConnection(url.netloc)
-            else:
-                conn = httplib.HTTPConnection(url.netloc)
-            conn.request("GET", url.path)
-            r1 = conn.getresponse()
-            logger.info('status %d' % r1.status)
-            if r1.status == 200:
-                data = r1.read()
-                conn.close()
-            else:
-                data = None
-            return data
-
-        return None
+        build_list = self.build_manager.build_with_id(build_id)
+        return build_list
 
 
     def create(self, req):
         """
         Returns the following information for all builds:
         """
-        c = engine.get_engine_client(req.context)
+        build = {}
+        for k, v in req.params.items():
+           build[k] = v
+        build['state'] = 'BUILDING' 
+        return self.build_manager.add_build(build)
 
-        try:
-            templ = self._get_template(req)
-        except socket.gaierror:
-            msg = _('Invalid Template URL')
-            return webob.exc.HTTPBadRequest(explanation=msg)
-        if templ is None:
-            msg = _("TemplateBody or TemplateUrl were not given.")
-            return webob.exc.HTTPBadRequest(explanation=msg)
-
-        try:
-            build = json.loads(templ)
-        except ValueError:
-            msg = _("The Template must be a JSON document.")
-            return webob.exc.HTTPBadRequest(explanation=msg)
-        build['StackName'] = req.params['StackName']
-
-        return c.create_build(build, **req.params)
-
-    def validate_template(self, req):
-
-        client = engine.get_engine_client(req.context)
-
-        try:
-            templ = self._get_template(req)
-        except socket.gaierror:
-            msg = _('Invalid Template URL')
-            return webob.exc.HTTPBadRequest(explanation=msg)
-        if templ is None:
-            msg = _("TemplateBody or TemplateUrl were not given.")
-            return webob.exc.HTTPBadRequest(explanation=msg)
-
-        try:
-            build = json.loads(templ)
-        except ValueError:
-            msg = _("The Template must be a JSON document.")
-            return webob.exc.HTTPBadRequest(explanation=msg)
-
-        logger.info('validate_template')
-        return client.validate_template(build, **req.params)
 
     def delete(self, req):
         """
@@ -153,20 +84,6 @@ class BuildController(object):
         else:
             return webob.exc.HTTPNotFound()
 
-
-    def events_list(self, req):
-        """
-        Returns the following information for all builds:
-        """
-        c = engine.get_engine_client(req.context)
-        build_list = c.get_build_events(**req.params)
-
-        res = {'DescribeStackEventsResult': {'StackEvents': [] } }
-        summaries = res['DescribeStackEventsResult']['StackEvents']
-        for s in build_list:
-            summaries.append(s)
-
-        return res
 
 def create_resource(options):
     """Builds resource factory method."""

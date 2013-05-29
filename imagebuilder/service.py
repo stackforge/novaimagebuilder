@@ -551,7 +551,6 @@ class WSGIService(object):
         self.host = getattr(CONF, '%s_listen' % name, "0.0.0.0")
         print '%s_listen_port' % name 
         self.port = getattr(CONF, '%s_listen_port' % name, 0)
-        import pdb;pdb.set_trace()
         self.workers = getattr(CONF, '%s_workers' % name, None)
         self.use_ssl = use_ssl
         self.server = wsgi.Server(name,

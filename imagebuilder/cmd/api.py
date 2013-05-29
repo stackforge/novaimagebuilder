@@ -44,7 +44,6 @@ def main():
 
     launcher = service.ProcessLauncher()
     for api in CONF.enabled_apis:
-        import pdb;pdb.set_trace()
         should_use_ssl = api in CONF.enabled_ssl_apis
         server = service.WSGIService(api, use_ssl=should_use_ssl)
         launcher.launch_server(server, workers=server.workers or 1)

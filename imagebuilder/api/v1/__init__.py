@@ -32,12 +32,13 @@ class API(wsgi.Router):
 
         builds_resource = builds.create_resource(conf)
 
-        mapper.resource("stack", "builds", controller=builds_resource,
-                        collection={'detail': 'GET'})
-
-        mapper.connect("/CreateBuild", controller=builds_resource,
+        mapper.connect("/build", controller=builds_resource,
                        action="create", conditions=dict(method=["POST"]))
-        mapper.connect("/ListBuilds", controller=builds_resource,
+        mapper.connect("/builds", controller=builds_resource,
                        action="list", conditions=dict(method=["GET"]))
+        mapper.connect("/build/{build_id}", controller=builds_resource,
+                       action="describe", conditions=dict(method=["GET"]))
+        mapper.connect("/build", controller=builds_resource,
+                       action="update", conditions=dict(method=["PUT"]))
 
         super(API, self).__init__(mapper)
