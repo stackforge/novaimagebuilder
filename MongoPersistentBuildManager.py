@@ -17,9 +17,10 @@
 import logging
 import json
 import pymongo
+from bson.objectid import ObjectId
 
-DB_NAME = "imagebuilder_db"
-COLLECTION_NAME = "imagebuilder_collection"
+DB_NAME = "buildbuilder_db"
+COLLECTION_NAME = "buildbuilder_collection"
 
 
 class MongoPersistentBuildManager(object):
@@ -40,14 +41,11 @@ class MongoPersistentBuildManager(object):
         @return TODO
         """
         try:
-            build = self._from_mongo_meta(self.collection.find_one( { "_id": build_id } ))
+            build = self._builds_from_query( { "_id" : ObjectId(build_id )} )
         except Exception as e:
             self.log.debug('Exception caught: %s' % e)
             return None
-
-        if not metadata:
-            raise Exception("Unable to retrieve object metadata in Mongo for ID (%s)" % (build_id))
-
+        
         return build
 
     def add_build(self, build):
@@ -64,8 +62,7 @@ class MongoPersistentBuildManager(object):
             metadata = self.collection.find_one( { "_id": build['_id'] } )
             if metadata:
                 raise Exception("Image %s already managed, use build_with_id() and save_build()" % (build.identifier))
-
-        self._save_build(build)
+        return self._save_build(build)
 
     def save_build(self, build):
         """
@@ -85,6 +82,7 @@ class MongoPersistentBuildManager(object):
         try:
             build = self.collection.insert(build)
             self.log.debug("Saved metadata for build (%s)" % (build))
+            return build.__str__()
         except Exception as e:
             self.log.debug('Exception caught: %s' % e)
             raise Exception('Unable to save build metadata: %s' % e)
@@ -101,3 +99,18 @@ class MongoPersistentBuildManager(object):
             self.collection.remove(build_id)
         except Exception as e:
             self.log.warn('Unable to remove mongo record: %s' % e)
+
+    def _builds_from_query(self, query):
+        mongo_cursor = self.collection.find(query)
+        import pdb;pdb.set_trace()
+        builds = self._builds_from_mongo_cursor(mongo_cursor) 
+        return builds
+
+    def _builds_from_mongo_cursor(self, mongo_cursor):
+        builds = []
+        for build in mongo_cursor:
+            build_dict = {}
+            for k, v in build.items():
+                build_dict[k.__str__()] = v.__str__()
+            builds.append(build_dict)
+        return builds
