@@ -15,7 +15,6 @@
 #   limitations under the License.
 
 import logging
-import json
 import pymongo
 from bson.objectid import ObjectId
 
@@ -59,9 +58,10 @@ class MongoPersistentBuildManager(object):
         @return TODO
         """
         if '_id' in build:
-            metadata = self.collection.find_one( { "_id": build['_id'] } )
+            metadata = self.collection.find_one({"_id": build['identifier']})
             if metadata:
-                raise Exception("Image %s already managed, use build_with_id() and save_build()" % (build.identifier))
+                raise Exception("Image %s already managed, use build_with_id() and save_build()" %
+                                (build['identifier']))
         return self._save_build(build)
 
     def save_build(self, build):
@@ -72,8 +72,8 @@ class MongoPersistentBuildManager(object):
 
         @return TODO
         """
-        build_id = str(build.identifier)
-        metadata = self._from_mongo_meta(self.collection.find_one( { "_id": build_id } ))
+        build_id = str(build['identifier'])
+        metadata = self._from_mongo_meta(self.collection.find_one({"_id": build_id}))
         if not metadata:
             raise Exception('Image %s not managed, use "add_build()" first.' % build_id)
         self._save_build(build)
@@ -81,7 +81,7 @@ class MongoPersistentBuildManager(object):
     def _save_build(self, build):
         try:
             build = self.collection.insert(build)
-            self.log.debug("Saved metadata for build (%s)" % (build))
+            self.log.debug("Saved metadata for build (%s)" % build)
             return build.__str__()
         except Exception as e:
             self.log.debug('Exception caught: %s' % e)
@@ -102,8 +102,7 @@ class MongoPersistentBuildManager(object):
 
     def _builds_from_query(self, query):
         mongo_cursor = self.collection.find(query)
-        import pdb;pdb.set_trace()
-        builds = self._builds_from_mongo_cursor(mongo_cursor) 
+        builds = self._builds_from_mongo_cursor(mongo_cursor)
         return builds
 
     def _builds_from_mongo_cursor(self, mongo_cursor):

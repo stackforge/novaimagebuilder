@@ -18,17 +18,19 @@
 
 import os
 import sys
-import guestfs
-import pycurl
 import subprocess
 import re
 from string import Template
 from tempfile import NamedTemporaryFile, TemporaryFile
+from time import sleep
+
+import guestfs
+import pycurl
 from glanceclient import client as glance_client
 from cinderclient import client as cinder_client
 from keystoneclient.v2_0 import client as keystone_client
 from novaclient.v1_1 import client as nova_client
-from time import sleep
+
 
 
 ### Utility functions borrowed from Oz and lightly modified

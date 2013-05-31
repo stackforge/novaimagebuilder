@@ -17,9 +17,12 @@
 import os
 import sys
 import shutil
-import argparse
 from tempfile import mkdtemp
+
+import argparse
+
 from image_utils import *
+
 
 def get_cli_arguments():
     parser = argparse.ArgumentParser(description='Launch and snapshot a kickstart install using syslinux and Glance')
