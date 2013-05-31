@@ -31,6 +31,14 @@ class MongoPersistentBuildManager(object):
         self.db = self.con[DB_NAME]
         self.collection = self.db[COLLECTION_NAME]
 
+    def all_builds(self):
+        try:
+            builds = self._builds_from_query(None)
+        except Exception as e:
+            self.log.exception('Failure listing builds: %s' % e)
+
+        return builds
+
     def build_with_id(self, build_id):
         """
         TODO: Docstring for build_with_id
@@ -40,7 +48,7 @@ class MongoPersistentBuildManager(object):
         @return TODO
         """
         try:
-            build = self._builds_from_query( { "_id" : ObjectId(build_id )} )
+            build = self._builds_from_query({"_id": ObjectId(build_id)})
         except Exception as e:
             self.log.debug('Exception caught: %s' % e)
             return None

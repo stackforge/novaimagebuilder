@@ -25,9 +25,9 @@ class BuildController(RestController):
         self.pim = MongoPersistentBuildManager()
 
     # RESOURCE PATH: [GET] /osib/v1/builds
-    @expose([str])
+    @expose(str)
     def get_all(self):
-        pass
+        return str(self.pim.all_builds())
 
     # RESOURCE PATH: [GET] /osib/v1/builds/:uuid
     @expose(str, str)
