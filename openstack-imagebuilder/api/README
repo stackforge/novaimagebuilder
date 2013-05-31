@@ -1,0 +1,28 @@
+WARNING:
+-------
+THIS IS STILL VERY BUGGY!
+1) The response on the POST doesn't work with every client.
+2) The responses are all str instead of real objects.
+
+
+REQUIREMENTS:
+------------
+Requires pecan and wsme
+
+On Fedora, install the packages python-pecan and python-wsme
+
+
+RUNNING:
+-------
+For now, run the following:
+
+    image-building-poc% pecan serve openstack-imagebuilder/api/config.py
+
+
+- Once the server starts, use HTTPie or curl to POST to /osib/v1/builds
+    ex
+        http --json POST localhost:8080/osib/v1/builds
+
+- Now you can GET that object using the '_id'
+    ex
+        http --json localhost:8080/osib/v1/builds/51a9293ff731080a5ac2a24b
