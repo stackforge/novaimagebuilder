@@ -23,6 +23,8 @@ import os
 import socket
 import sys
 import urlparse
+from oslo.config import cfg
+import uuid
 
 import webob
 from webob.exc import (HTTPNotFound,
@@ -31,8 +33,11 @@ from webob.exc import (HTTPNotFound,
 
 from imagebuilder.common import wsgi
 from imagebuilder import MongoPersistentBuildManager
+from imagebuilder import SQLAlchemyPersistentBuildManager
 logger = logging.getLogger('imagebuilder.api.v1.builds')
 
+
+CONF = cfg.CONF
 
 class BuildController(object):
 
@@ -43,7 +48,10 @@ class BuildController(object):
 
     def __init__(self, options):
         self.options = options
-        self.build_manager = MongoPersistentBuildManager.MongoPersistentBuildManager()
+        if CONF['imagebuilder_api_persistence_backend'] == 'mongo':
+            self.build_manager = MongoPersistentBuildManager.MongoPersistentBuildManager()
+        else:
+            self.build_manager = SQLAlchemyPersistentBuildManager.SQLAlchemyPersistentBuildManager()
 
     def list(self, req):
         """
@@ -69,6 +77,7 @@ class BuildController(object):
         for k, v in req.params.items():
            build[k] = v
         build['state'] = 'BUILDING' 
+        build['id'] = str(uuid.uuid4())
         return self.build_manager.add_build(build)
 
 

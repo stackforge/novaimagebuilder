@@ -61,6 +61,9 @@ service_opts = [
     cfg.IntOpt('imagebuilder_api_listen_port',
                default=8733,
                help='port for imagebuilder api to listen'),
+    cfg.StrOpt('imagebuilder_api_persistence_backend',
+               default="mongo",
+               help='database back to use for imagebuilder api'),
     ]
 
 CONF = cfg.CONF

@@ -41,7 +41,7 @@ class MongoPersistentBuildManager(object):
         @return TODO
         """
         try:
-            build = self._builds_from_query( { "_id" : ObjectId(build_id )} )
+            build = self._builds_from_query( { "id" : build_id } )
         except Exception as e:
             self.log.debug('Exception caught: %s' % e)
             return None
@@ -80,9 +80,9 @@ class MongoPersistentBuildManager(object):
 
     def _save_build(self, build):
         try:
-            build = self.collection.insert(build)
-            self.log.debug("Saved metadata for build (%s)" % (build))
-            return build.__str__()
+            self.collection.insert(build)
+            self.log.debug("Saved metadata for build (%s)" % (build['id']))
+            return build['id']
         except Exception as e:
             self.log.debug('Exception caught: %s' % e)
             raise Exception('Unable to save build metadata: %s' % e)
@@ -100,7 +100,7 @@ class MongoPersistentBuildManager(object):
         except Exception as e:
             self.log.warn('Unable to remove mongo record: %s' % e)
 
-    def _builds_from_query(self, query):
+    def builds_from_query(self, query):
         mongo_cursor = self.collection.find(query)
         builds = self._builds_from_mongo_cursor(mongo_cursor) 
         return builds
