@@ -48,7 +48,8 @@ class MongoPersistentBuildManager(object):
         @return TODO
         """
         try:
-            build = self._builds_from_query({"_id": ObjectId(build_id)})
+           # build = self._builds_from_query({"_id": ObjectId(build_id)})
+            build = self._builds_from_query({"identifier": build_id})[0]
         except Exception as e:
             self.log.debug('Exception caught: %s' % e)
             return None
