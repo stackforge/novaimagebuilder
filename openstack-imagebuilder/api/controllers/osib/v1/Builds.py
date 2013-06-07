@@ -25,10 +25,9 @@ class Build(object):
     identifier = wtypes.text
     _id = wtypes.text
 
-    def __init__(self, props={}, **kwargs):
+    def __init__(self, props={}):
         for k in props.keys():
             setattr(self, k, props[k])
-        super(Build, self).__init__(**kwargs)
 
 class BuildController(RestController):
     def __init__(self):
