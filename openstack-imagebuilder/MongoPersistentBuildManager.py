@@ -16,10 +16,10 @@
 
 import logging
 import pymongo
-from bson.objectid import ObjectId
 
-DB_NAME = "buildbuilder_db"
-COLLECTION_NAME = "buildbuilder_collection"
+
+DB_NAME = "imagebuilder_db"
+COLLECTION_NAME = "imagebuilder_collection"
 
 
 class MongoPersistentBuildManager(object):
@@ -33,7 +33,7 @@ class MongoPersistentBuildManager(object):
 
     def all_builds(self):
         try:
-            builds = self._builds_from_query(None)
+            builds = self.builds_from_query(None)
         except Exception as e:
             self.log.exception('Failure listing builds: %s' % e)
 
@@ -49,7 +49,7 @@ class MongoPersistentBuildManager(object):
         """
         try:
            # build = self._builds_from_query({"_id": ObjectId(build_id)})
-            build = self._builds_from_query({"identifier": build_id})[0]
+            build = self.builds_from_query({"identifier": build_id})[0]
         except Exception as e:
             self.log.debug('Exception caught: %s' % e)
             return None
@@ -58,7 +58,7 @@ class MongoPersistentBuildManager(object):
 
     def add_build(self, build):
         """
-        Add a PersistentBuild-type object to this PersistenBuildManager
+        Add a PersistentBuild-type object to this PersistentBuildManager
         This should only be called with an build that has not yet been added to the store.
         To retrieve a previously persisted build use build_with_id() or build_query()
 
@@ -66,7 +66,7 @@ class MongoPersistentBuildManager(object):
 
         @return TODO
         """
-        if '_id' in build:
+        if 'identifier' in build:
             metadata = self.collection.find_one({"_id": build['identifier']})
             if metadata:
                 raise Exception("Image %s already managed, use build_with_id() and save_build()" %
@@ -82,16 +82,16 @@ class MongoPersistentBuildManager(object):
         @return TODO
         """
         build_id = str(build['identifier'])
-        metadata = self._from_mongo_meta(self.collection.find_one({"_id": build_id}))
+        metadata = self._builds_from_mongo_cursor(self.collection.find_one({"_id": build_id}))
         if not metadata:
             raise Exception('Image %s not managed, use "add_build()" first.' % build_id)
         self._save_build(build)
 
     def _save_build(self, build):
         try:
-            build = self.collection.insert(build)
-            self.log.debug("Saved metadata for build (%s)" % build)
-            return build.__str__()
+            self.collection.insert(build)
+            self.log.debug("Saved metadata for build (%s)" % (build['id']))
+            return build['id']
         except Exception as e:
             self.log.debug('Exception caught: %s' % e)
             raise Exception('Unable to save build metadata: %s' % e)
@@ -107,9 +107,9 @@ class MongoPersistentBuildManager(object):
         try:
             self.collection.remove(build_id)
         except Exception as e:
-            self.log.warn('Unable to remove mongo record: %s' % e)
+            self.log.warn('Unable to remove record: %s' % e)
 
-    def _builds_from_query(self, query):
+    def builds_from_query(self, query):
         mongo_cursor = self.collection.find(query)
         builds = self._builds_from_mongo_cursor(mongo_cursor)
         return builds

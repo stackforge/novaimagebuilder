@@ -13,10 +13,20 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
+import logging
+log = logging.getLogger('%s' % __name__)
 
 # Server Specific Configurations
+try:
+    from oslo.config import cfg
+    config = cfg.CONF
+    listen_port = config['osib_listen_port']
+except Exception as e:
+    log.exception('Unable to load configuration with oslo: %s' % e)
+    listen_port = '8080'
+
 server = {
-    'port': '8080',
+    'port': listen_port,
     'host': '0.0.0.0'
 }
 
@@ -36,7 +46,7 @@ app = {
 logging = {
     'loggers': {
         'root': {'level': 'INFO', 'handlers': ['console']},
-        'pdiddy': {'level': 'DEBUG', 'handlers': ['console']}
+        'osib': {'level': 'DEBUG', 'handlers': ['console']}
     },
     'handlers': {
         'console': {

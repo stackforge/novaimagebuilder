@@ -23,7 +23,11 @@ from uuid import uuid4 as uuid
 
 class Build(object):
     identifier = wtypes.text
-    _id = wtypes.text
+    status = wtypes.text
+    name = wtypes.text
+    glance_id = wtypes.text
+    cinder_id = wtypes.text
+    nova_id = wtypes.text
 
     def __init__(self, props={}):
         for k in props.keys():
