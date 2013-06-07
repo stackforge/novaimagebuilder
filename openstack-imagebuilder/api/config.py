@@ -13,20 +13,36 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
+from oslo.config import cfg
 import logging
-log = logging.getLogger('%s' % __name__)
+
+
+log = logging.getLogger( __name__)
+
+service_opts = [
+    cfg.ListOpt('enabled_apis',
+                default=['osib/v1'],
+                help='the list of APIs enabled (currently unused)'),
+    cfg.ListOpt('enabled_ssl_apis',
+                default=[],
+                help='the list of APIs enabled via SSL (currently unused)'),
+    cfg.StrOpt('osib_listen_host',
+               default='0.0.0.0',
+               help='host address for openstack-imagebuilder REST API'),
+    cfg.IntOpt('osib_listen_port',
+               default=8080,
+               help='port to listen to for openstack-imagebuilder REST API'),
+    cfg.StrOpt('osib_persistence_backend',
+               default='SQLAlchemy',
+               help='data manager to use: SQLAlchemy, Mongo')
+]
+config = cfg.CONF
+config.register_opts(service_opts)
+#config.import_opt('host', 'openstack-imagebuilder.netconf')
 
 # Server Specific Configurations
-try:
-    from oslo.config import cfg
-    config = cfg.CONF
-    listen_port = config['osib_listen_port']
-except Exception as e:
-    log.exception('Unable to load configuration with oslo: %s' % e)
-    listen_port = '8080'
-
 server = {
-    'port': listen_port,
+    'port': config['osib_listen_port'],
     'host': '0.0.0.0'
 }
 
