@@ -28,17 +28,17 @@ service_opts = [
                 help='the list of APIs enabled via SSL (currently unused)'),
     cfg.StrOpt('osib_listen_host',
                default='0.0.0.0',
-               help='host address for openstack-imagebuilder REST API'),
+               help='host address for imagebuilder REST API'),
     cfg.IntOpt('osib_listen_port',
                default=8080,
-               help='port to listen to for openstack-imagebuilder REST API'),
+               help='port to listen to for imagebuilder REST API'),
     cfg.StrOpt('osib_persistence_backend',
                default='SQLAlchemy',
                help='data manager to use: SQLAlchemy, Mongo')
 ]
 config = cfg.CONF
 config.register_opts(service_opts)
-#config.import_opt('host', 'openstack-imagebuilder.netconf')
+#config.import_opt('host', 'imagebuilder.netconf')
 
 # Server Specific Configurations
 server = {
@@ -48,8 +48,8 @@ server = {
 
 # Pecan Application Configurations
 app = {
-    'root': 'openstack-imagebuilder.api.controllers.RootController',
-    'modules': ['openstack-imagebuilder.api'],
+    'root': 'imagebuilder.api.controllers.RootController',
+    'modules': ['imagebuilder.api'],
     'static_root': '%(confdir)s/public',
     'template_path': '%(confdir)s/api/templates',
     'debug': True,

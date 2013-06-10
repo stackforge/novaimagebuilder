@@ -17,7 +17,7 @@
 from pecan.rest import RestController
 from wsmeext.pecan import wsexpose as expose
 from wsme import types as wtypes
-from MongoPersistentBuildManager import MongoPersistentBuildManager
+from imagebuilder.MongoPersistentBuildManager import MongoPersistentBuildManager
 from uuid import uuid4 as uuid
 
 

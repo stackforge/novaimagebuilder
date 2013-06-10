@@ -14,14 +14,22 @@
 #   limitations under the License.
 
 
-from pecan import make_app
+import pecan
+from imagebuilder.api import config as api_config
+
+
+def get_pecan_config():
+    # Set up the pecan configuration
+    filename = api_config.__file__.replace('.pyc', '.py')
+    return pecan.configuration.conf_from_file(filename)
 
 
 def setup_app(config):
-    return make_app(
-        config.app.root,
-        static_root=config.app.static_root,
-        template_path=config.app.template_path,
+    get_pecan_config()
+    return pecan.make_app(
+        config.app['root'],
+        static_root=config.app['static_root'],
+        template_path=config.app['template_path'],
         logging=getattr(config, 'logging', {}),
         debug=getattr(config.app, 'debug', False),
         force_canonical=getattr(config.app, 'force_canonical', True),
