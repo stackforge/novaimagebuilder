@@ -6,8 +6,8 @@ server = {
 
 # Pecan Application Configurations
 app = {
-    'root': 'openstack-imagebuilder.api.controllers.RootController',
-    'modules': ['openstack-imagebuilder.api'],
+    'root': 'imagebuilder.api.controllers.RootController',
+    'modules': ['imagebuilder.api'],
     'static_root': '%(confdir)s/../../public',
     'template_path': '%(confdir)s/../templates',
     'debug': True,

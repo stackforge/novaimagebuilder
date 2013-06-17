@@ -13,47 +13,63 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-from oslo.config import cfg
+
+import sys
+import os
+import logging
 import pecan
-from imagebuilder.api import config as api_config
+from imagebuilder import service
+from imagebuilder.api import config as pecan_config
+from imagebuilder.openstack.common import log
+from oslo.config import cfg
+from wsgiref import simple_server
 
-
-CLI_OPTIONS = [
-    cfg.StrOpt('host',
-               default='0.0.0.0',
-               help='IP or hostname to run the REST api on.'),
-    cfg.IntOpt('port',
-               default=8080,
-               help='Port number to run the REST server on.'),
-
-]
-cfg.CONF.register_cli_opts(CLI_OPTIONS)
-
-def prepare_service(argv=[]):
-    cfg.set_defaults(log.log_opts,
-                     default_log_levels=['sqlalchemy=WARN',
-                                         'eventlet.wsgi.server=WARN'
-                                         ])
-    cfg.CONF(argv[1:], project='imagebuilder')
-    log.setup('imagebuilder')
 
 def get_pecan_config():
     # Set up the pecan configuration
-    filename = api_config.__file__.replace('.pyc', '.py')
+    filename = pecan_config.__file__.replace('.pyc', '.py')
     return pecan.configuration.conf_from_file(filename)
 
 
 def setup_app(config):
-    get_pecan_config()
+    if not config:
+        config = get_pecan_config()
+    pecan.configuration.set_config(dict(config), overwrite=True)
     return pecan.make_app(
         config.app['root'],
         static_root=config.app['static_root'],
         template_path=config.app['template_path'],
-        logging=getattr(config, 'logging', {}),
-        debug=getattr(config.app, 'debug', False),
+        debug=cfg.CONF.debug,
         force_canonical=getattr(config.app, 'force_canonical', True),
-        guess_content_type_from_ext=getattr(
-            config.app,
-            'guess_content_type_from_ext',
-            True),
     )
+
+def start():
+    # Parse OpenStack config file and command line options, then
+    # configure logging.
+    service.prepare_service(sys.argv)
+
+    # Build the WSGI app
+    host, port = cfg.CONF['host'], cfg.CONF['port']
+    srvr_config = get_pecan_config()
+    srvr_config['server']['host'] = host
+    srvr_config['server']['port'] = port
+    root = setup_app(srvr_config)
+    # Create the WSGI server and start it
+    srvr = simple_server.make_server(host, port, root)
+
+    LOG = log.getLogger(__name__)
+    LOG.info('Starting server in PID %s' % os.getpid())
+    LOG.info("Configuration:")
+    cfg.CONF.log_opt_values(LOG, logging.INFO)
+
+    if host == '0.0.0.0':
+        LOG.info('serving on 0.0.0.0:%s, view at http://127.0.0.1:%s' %
+                 (port, port))
+    else:
+        LOG.info("serving on http://%s:%s" % (host, port))
+
+    try:
+        srvr.serve_forever()
+    except KeyboardInterrupt:
+        # allow CTRL+C to shutdown without an error
+        LOG.info("Shutting down...")
