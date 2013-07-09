@@ -541,8 +541,8 @@ def launch_and_wait(image, image_volume, install_media_volume, working_ks, insta
     print "Started instance id (%s)" % (instance.id)
 
     #noping for Folsom - shutoff for newer
-    #result = wait_for_shutoff(instance, nova)
-    result = wait_for_noping(instance, nova, console_password, console_command)
+    result = wait_for_shutoff(instance, nova)
+    #result = wait_for_noping(instance, nova, console_password, console_command)
 
     if not result:
         raise Exception("Timeout while waiting for install to finish")
