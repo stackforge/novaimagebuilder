@@ -16,6 +16,7 @@
 
 import os
 import sys
+import traceback
 import shutil
 import argparse
 from tempfile import mkdtemp
@@ -220,6 +221,8 @@ def create_image(args):
     except Exception as e:
         print "Uncaught exception encountered during install"
         print str(e)
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        traceback.print_tb(exc_traceback) 
         retcode = 1
 
     finally:
