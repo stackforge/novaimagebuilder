@@ -153,3 +153,7 @@ Support for direct booting of kernel/ramdisk/cmdline combinations when/if it is 
 Improved detection of install success or failure
 
 Support for caching of self-install images
+
+
+
+
