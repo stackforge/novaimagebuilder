@@ -220,6 +220,8 @@ def create_image(args):
     except Exception as e:
         print "Uncaught exception encountered during install"
         print str(e)
+        import traceback
+        traceback.print_stack()
         retcode = 1
 
     finally:
