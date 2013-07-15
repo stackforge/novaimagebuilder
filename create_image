@@ -20,7 +20,7 @@ import shutil
 import argparse
 from tempfile import mkdtemp
 from time import strftime, gmtime
-from image_utils import *
+from imagebuilder.image_utils import *
 
 
 def get_cli_arguments():
