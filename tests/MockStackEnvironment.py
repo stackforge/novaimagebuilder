@@ -41,7 +41,7 @@ class MockStackEnvironment(Singleton):
     IMAGE_STATUS_LIST = ('QUEUED', 'SAVING', 'ACTIVE', 'KILLED', 'DELETED', 'PENDING_DELETE')
 
     def _singleton_init(self):
-        super(MockStackEnvironment, self)._singleton_init()
+        super(StackEnvironment, self)._singleton_init()
         self.log = logging.getLogger('%s.%s' % (__name__, self.__class__.__name__))
         # Attributes controlling Mock behavior
         self.cinder = False
