@@ -1,0 +1,9 @@
+Verified+2: Jenkins
+Approved+1: Steve Loranz <sloranz@xantham.com>
+Code-Review+2: Steve Loranz <sloranz@xantham.com>
+Verified-1: novaimagebuilder-jenkins <dennis.kliban@gmail.com>
+Submitted-by: Jenkins
+Submitted-at: Mon, 04 Nov 2013 16:54:10 +0000
+Reviewed-on: https://review.openstack.org/55162
+Project: stackforge/novaimagebuilder
+Branch: refs/heads/master
